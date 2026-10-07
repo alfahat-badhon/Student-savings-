@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#059669">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Taka Ledger">
+<meta name="format-detection" content="telephone=no">
+<title>Taka Ledger – Student Expense Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{sans:['Manrope','ui-sans-serif','system-ui','sans-serif']}}}}</script>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none;font-family:'Manrope',ui-sans-serif,system-ui,sans-serif;font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body class="bg-stone-50 text-stone-900 dark:bg-neutral-950 dark:text-stone-100 min-h-screen">
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
+<script>
+const {useState,useEffect,useMemo}=React;
+const html=htm.bind(React.createElement);
+
+/* ---------- Storage adapter: swap this object for Google Sheets / Supabase ----------
+   Keep the same two async methods. Example (Supabase):
+   load: async()=> (await supabase.from('tracker').select('*').single()).data
+   save: async(s)=> supabase.from('tracker').upsert({id:1,...s})                     */
+const KEY='taka-ledger-v1';
+const Store={
+  async load(){try{return JSON.parse(localStorage.getItem(KEY))}catch(e){return null}},
+  async save(s){try{localStorage.setItem(KEY,JSON.stringify(s))}catch(e){}}
+};
+
+const CATS={'Food/Snacks':'amber','Transport':'sky','Study Materials':'violet','Bills/Recharge':'rose','Personal':'emerald','Others':'stone'};
+const BADGE={amber:'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300',sky:'bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300',violet:'bg-violet-100 text-violet-800 dark:bg-violet-500/15 dark:text-violet-300',rose:'bg-rose-100 text-rose-800 dark:bg-rose-500/15 dark:text-rose-300',emerald:'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300',stone:'bg-stone-200 text-stone-700 dark:bg-stone-500/20 dark:text-stone-300'};
+const BAR={amber:'bg-amber-500',sky:'bg-sky-500',violet:'bg-violet-500',rose:'bg-rose-500',emerald:'bg-emerald-500',stone:'bg-stone-400'};
+const PAYS=['Mobile Banking / bKash / Nagad','Bank Card','Cash','Online Transfer'];
+const today=()=>{const d=new Date();return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
+const fmt=n=>(n<0?'-':'')+'৳'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+
+const ICONS={plus:['M5 12h14','M12 5v14'],trash:['M3 6h18','M19 6l-1 14H6L5 6','M10 11v6','M14 11v6','M9 6V4h6v2'],edit:['M12 20h9','M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z'],down:['M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4','M7 10l5 5 5-5','M12 15V3'],sun:['M12 8a4 4 0 100 8 4 4 0 000-8z','M12 2v2','M12 20v2','M2 12h2','M20 12h2','M5 5l1.5 1.5','M17.5 17.5L19 19','M5 19l1.5-1.5','M17.5 6.5L19 5'],moon:['M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z'],search:['M11 4a7 7 0 100 14 7 7 0 000-14z','M21 21l-4.3-4.3'],wallet:['M19 7V4a1 1 0 00-1-1H5a2 2 0 000 4h15a1 1 0 011 1v4h-3a2 2 0 000 4h3a1 1 0 001-1v-2a1 1 0 00-1-1','M3 5v14a2 2 0 002 2h15a1 1 0 001-1v-4'],home:['M3 10l9-7 9 7','M5 9v11h14V9'],list:['M8 6h13','M8 12h13','M8 18h13','M3 6h.01','M3 12h.01','M3 18h.01'],chart:['M4 20V10','M10 20V4','M16 20v-7','M22 20H2'],tune:['M4 21v-7','M4 10V3','M12 21v-9','M12 8V3','M20 21v-5','M20 12V3','M1 14h6','M9 8h6','M17 16h6'],x:['M18 6L6 18','M6 6l12 12'],reset:['M3 12a9 9 0 109-9 9 9 0 00-6.4 2.6L3 8','M3 3v5h5']};
+const Icon=({n,s=18})=>html`<svg width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">${ICONS[n].map(d=>html`<path key=${d} d=${d}/>`)}</svg>`;
+
+const field='w-full rounded-lg border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2.5 text-base outline-none focus:ring-2 focus:ring-emerald-500/60 focus:border-emerald-500';
+const btn='inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500';
+const ghost=btn+' border border-stone-300 dark:border-neutral-700 hover:bg-stone-100 dark:hover:bg-neutral-800';
+
+function CashForm({onSave,onClose}){
+  const [d,setD]=useState(today()),[a,setA]=useState(''),[n,setN]=useState(''),[err,setErr]=useState('');
+  const go=()=>{const v=parseFloat(a);if(!(v>0))return setErr('Enter an amount greater than 0.');onSave({date:d,amount:v,note:n.trim()})};
+  return html`<div class="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/50" onClick=${onClose}>
+    <div class="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 shadow-2xl p-5" onClick=${e=>e.stopPropagation()} role="dialog" aria-label="Add cash">
+      <h2 class="text-lg font-bold mb-4">Add cash</h2>
+      <div class="grid gap-3">
+        <input type="number" inputMode="decimal" min="0" step="0.01" class=${field} placeholder="Amount (৳)" value=${a} onChange=${e=>setA(e.target.value)} autoFocus/>
+        <input type="date" class=${field} value=${d} onChange=${e=>setD(e.target.value)}/>
+        <input class=${field} placeholder="Note (e.g. from home, gift)" value=${n} onChange=${e=>setN(e.target.value)}/>
+      </div>
+      ${err&&html`<p class="mt-3 text-sm text-rose-600 dark:text-rose-400" role="alert">${err}</p>`}
+      <div class="mt-5 flex justify-end gap-2"><button class=${ghost} onClick=${onClose}>Cancel</button><button class=${btn+' bg-amber-600 hover:bg-amber-700 text-white'} onClick=${go}>Add cash</button></div>
+    </div></div>`;
+}
+const isCash=i=>i.pay==='Cash';
+
+function Form({init,onSave,onClose,onDelete}){
+  const [f,setF]=useState(init||{date:today(),desc:'',cat:'Food/Snacks',pay:PAYS[0],amount:'',note:''});
+  const [err,setErr]=useState('');
+  const set=k=>e=>setF({...f,[k]:e.target.value});
+  const submit=()=>{
+    const a=parseFloat(f.amount);
+    if(!f.desc.trim())return setErr('Add a short description.');
+    if(!(a>0))return setErr('Enter an amount greater than 0.');
+    onSave({...f,amount:a,desc:f.desc.trim()});
+  };
+  const L=(t,c)=>html`<label class="block text-xs font-semibold text-stone-500 dark:text-stone-400 mb-1">${t}${c}</label>`;
+  return html`<div class="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" onClick=${onClose}>
+    <div class="w-full sm:max-w-lg max-h-full overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 shadow-2xl p-5" onClick=${e=>e.stopPropagation()} role="dialog" aria-label="Expense form">
+      <div class="flex items-center justify-between mb-4"><h2 class="text-lg font-bold">${init?'Edit expense':'Add expense'}</h2><button class=${ghost+' !p-2'} onClick=${onClose} aria-label="Close"><${Icon} n="x"/></button></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>${L('Date')}<input type="date" class=${field} value=${f.date} onChange=${set('date')}/></div>
+        <div>${L('Amount (৳)',' *')}<input type="number" inputMode="decimal" min="0" step="0.01" class=${field} value=${f.amount} onChange=${set('amount')} placeholder="150"/></div>
+        <div class="col-span-2">${L('Description',' *')}<input class=${field} value=${f.desc} onChange=${set('desc')} placeholder="Campus lunch, rickshaw fare…" autoFocus/></div>
+        <div>${L('Category')}<select class=${field} value=${f.cat} onChange=${set('cat')}>${Object.keys(CATS).map(c=>html`<option key=${c}>${c}</option>`)}</select></div>
+        <div>${L('Payment method')}<select class=${field} value=${f.pay} onChange=${set('pay')}>${PAYS.map(c=>html`<option key=${c}>${c}</option>`)}</select></div>
+        ${f.pay==='Cash'&&html`<p class="col-span-2 text-xs text-amber-700 dark:text-amber-400">Cash payments come out of your Cash in hand, not your bank balance.</p>`}
+        <div class="col-span-2">${L('Notes (optional)')}<input class=${field} value=${f.note} onChange=${set('note')}/></div>
+      </div>
+      ${err&&html`<p class="mt-3 text-sm text-rose-600 dark:text-rose-400" role="alert">${err}</p>`}
+      <div class="mt-5 flex justify-end gap-2">${onDelete&&html`<button class=${ghost+' text-rose-600 dark:text-rose-400 mr-auto'} onClick=${onDelete}><${Icon} n="trash" s=${16}/>Delete</button>`}<button class=${ghost} onClick=${onClose}>Cancel</button><button class=${btn+' bg-emerald-600 hover:bg-emerald-700 text-white'} onClick=${submit}>${init?'Save changes':'Add expense'}</button></div>
+    </div></div>`;
+}
+
+function App(){
+  const [ready,setReady]=useState(false);
+  const [initial,setInitial]=useState(22480);
+  const [items,setItems]=useState([]);
+  const [dark,setDark]=useState(()=>{try{const t=localStorage.getItem(KEY+'-theme');if(t)return t==='dark'}catch(e){}return matchMedia('(prefers-color-scheme: dark)').matches});
+  const [form,setForm]=useState(null); // null | 'new' | item
+  const [q,setQ]=useState(''),[cat,setCat]=useState('All');
+  const [toast,setToast]=useState('');
+  const [tab,setTab]=useState('home');
+  const [ask,setAsk]=useState(null);
+  const [cash,setCash]=useState({start:0,ins:[]});
+  const [cashForm,setCashForm]=useState(false);
+
+  useEffect(()=>{Store.load().then(s=>{if(s){setInitial(s.initial??22480);setItems(s.items||[]);if(s.cash)setCash(s.cash)}setReady(true)})},[]);
+  useEffect(()=>{if(ready)Store.save({initial,items,cash})},[initial,items,cash,ready]);
+  useEffect(()=>{document.documentElement.classList.toggle('dark',dark);try{localStorage.setItem(KEY+'-theme',dark?'dark':'light')}catch(e){}},[dark]);
+  useEffect(()=>{if(toast){const t=setTimeout(()=>setToast(''),2600);return()=>clearTimeout(t)}},[toast]);
+
+  const total=useMemo(()=>items.filter(i=>!isCash(i)).reduce((s,i)=>s+i.amount,0),[items]);
+  const cashSpent=useMemo(()=>items.filter(isCash).reduce((s,i)=>s+i.amount,0),[items]);
+  const cashAdded=cash.ins.reduce((s,i)=>s+i.amount,0);
+  const cashLeft=cash.start+cashAdded-cashSpent;
+  const allSpent=total+cashSpent;
+  const remaining=initial-total;
+  const low=remaining<initial*0.1;
+  const pct=initial>0?Math.max(0,Math.min(100,remaining/initial*100)):0;
+  const stats=useMemo(()=>{
+    const t=today();
+    const todaySum=items.filter(i=>i.date===t).reduce((s,i)=>s+i.amount,0);
+    const first=items.reduce((m,i)=>i.date<m?i.date:m,t);
+    const days=Math.max(1,Math.round((new Date(t)-new Date(first))/864e5)+1);
+    const avg=total>0?total/days:0;
+    const big=items.reduce((m,i)=>!m||i.amount>m.amount?i:m,null);
+    const byCat=Object.keys(CATS).map(c=>({c,v:items.filter(i=>i.cat===c).reduce((s,i)=>s+i.amount,0)})).filter(x=>x.v>0).sort((a,b)=>b.v-a.v);
+    return {todaySum,avg,big,byCat,left:avg>0&&remaining>0?Math.floor(remaining/avg):null};
+  },[items,total,remaining]);
+
+  // Chronological order → running balance after each transaction
+  const ledger=useMemo(()=>{
+    let b=initial,cs=0;
+    return [...items].sort((a,c)=>a.date.localeCompare(c.date)||a.id.localeCompare(c.id)).map(i=>{if(isCash(i)){cs+=i.amount;return {...i,after:cash.start+cash.ins.filter(x=>x.date<=i.date).reduce((s,x)=>s+x.amount,0)-cs}}return {...i,after:(b-=i.amount)}}).reverse();
+  },[items,initial,cash]);
+  const shown=ledger.filter(i=>(cat==='All'||i.cat===cat)&&(!q||(i.desc+' '+i.note+' '+i.pay).toLowerCase().includes(q.toLowerCase())));
+
+  const save=d=>{
+    if(form&&form!=='new')setItems(items.map(i=>i.id===form.id?{...i,...d}:i));
+    else setItems([...items,{...d,id:uid()}]);
+    setForm(null);setToast(form==='new'?'Expense added':'Expense updated');
+  };
+  const del=i=>setAsk({msg:'Delete "'+i.desc+'"?',yes:()=>{setItems(p=>p.filter(x=>x.id!==i.id));setToast('Expense deleted')}});
+  const reset=()=>setAsk({msg:'Delete ALL expenses and reset the balance to ৳22,480?',yes:()=>{setItems([]);setInitial(22480);setCash({start:0,ins:[]});setToast('Data reset')}});
+  const exportCsv=()=>{
+    const esc=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+    const rows=[['Date','Description','Category','Payment Method','Amount','Running Balance','Notes'],...[...ledger].reverse().map(i=>[i.date,i.desc,i.cat,i.pay,i.amount,i.after.toFixed(2),i.note])];
+    const csv='\ufeff'+rows.map(r=>r.map(esc).join(',')).join('\n');
+    try{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='expenses.csv';a.click()}catch(e){}
+    try{navigator.clipboard.writeText(csv);setToast('CSV downloaded / copied to clipboard')}catch(e){setToast('CSV export attempted')}
+  };
+
+  const card='rounded-2xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm p-5';
+  const tone=remaining<0?'text-rose-600 dark:text-rose-400':low?'text-orange-600 dark:text-orange-400':'text-emerald-600 dark:text-emerald-400';
+
+  const Tx=i=>html`<li key=${i.id}><button class="w-full text-left px-4 py-3 flex items-center gap-3 active:bg-stone-100 dark:active:bg-neutral-800" onClick=${()=>setForm(i)}>
+      <span class=${'h-10 w-10 shrink-0 rounded-full grid place-items-center text-sm font-bold '+BADGE[CATS[i.cat]]}>${i.cat[0]}</span>
+      <span class="min-w-0 flex-1"><span class="block font-semibold truncate">${i.desc}</span><span class="block text-xs text-stone-500 truncate">${i.date} · ${i.pay.split(' ')[0]}</span></span>
+      <span class="text-right shrink-0"><span class="block font-bold text-rose-600 dark:text-rose-400">-${fmt(i.amount)}</span><span class="block text-xs text-stone-500">${isCash(i)?'Cash':'Bal'} ${fmt(i.after)}</span></span>
+    </button></li>`;
+  const empty=html`<div class="p-8 text-center text-sm text-stone-500">${items.length?'No expenses match.':'No expenses yet. Tap + to add your first one.'}</div>`;
+  const hero=remaining<0?'bg-rose-600':low?'bg-orange-500':'bg-emerald-600';
+  const tabs=[['home','Home','home'],['history','History','list'],['cash','Cash','wallet'],['insights','Insights','chart'],['settings','Settings','tune']];
+
+  return html`<div class="max-w-lg mx-auto px-4 pt-4 pb-40">
+    <header class="flex items-center justify-between mb-4">
+      <h1 class="text-xl font-extrabold tracking-tight">${tabs.find(t=>t[0]===tab)[1]==='Home'?'Taka Ledger':tabs.find(t=>t[0]===tab)[1]}</h1>
+      <button class=${ghost+' !p-2.5'} onClick=${()=>setDark(!dark)} aria-label="Toggle dark mode"><${Icon} n=${dark?'sun':'moon'}/></button>
+    </header>
+
+    ${tab==='home'&&html`
+      <div class=${'rounded-3xl text-white p-6 shadow-lg transition-colors '+hero}>
+        <div class="text-sm font-semibold opacity-90">Remaining balance</div>
+        <div class="mt-1 text-4xl font-extrabold tracking-tight">${fmt(remaining)}</div>
+        <div class="mt-4 h-2 rounded-full bg-white/25 overflow-hidden"><div class="h-full bg-white rounded-full transition-all duration-500" style=${{width:pct+'%'}}></div></div>
+        <div class="mt-2 text-xs font-semibold opacity-95">${remaining<0?'Overspent — balance is negative.':low?'Low balance: under 10% left.':pct.toFixed(0)+'% of your balance left'}</div>
+      </div>
+      <div class="grid grid-cols-2 gap-3 mt-3">
+        <button class=${card+' !p-4 text-left'} onClick=${()=>setTab('settings')}><div class="text-xs font-semibold text-stone-500">Initial balance</div><div class="mt-1 text-lg font-extrabold">${fmt(initial)}</div></button>
+        <div class=${card+' !p-4'}><div class="text-xs font-semibold text-stone-500">Bank spent</div><div class="mt-1 text-lg font-extrabold text-rose-600 dark:text-rose-400">${fmt(total)}</div></div>
+      </div>
+      <button class=${card+' !p-4 mt-3 w-full text-left flex items-center justify-between'} onClick=${()=>setTab('cash')}><span><span class="block text-xs font-semibold text-stone-500">Cash in hand</span><span class=${'block mt-1 text-lg font-extrabold '+(cashLeft<0?'text-rose-600 dark:text-rose-400':'')}>${fmt(cashLeft)}</span></span><span class="text-xs font-semibold text-amber-600">Open cash</span></button>
+      <div class="flex items-center justify-between mt-6 mb-2"><h2 class="font-bold">Recent</h2>${ledger.length>5&&html`<button class="text-sm font-semibold text-emerald-600" onClick=${()=>setTab('history')}>See all</button>`}</div>
+      <ul class=${card+' !p-0 divide-y divide-stone-100 dark:divide-neutral-800 overflow-hidden'}>${ledger.length?ledger.slice(0,5).map(Tx):empty}</ul>`}
+
+    ${tab==='history'&&html`
+      <div class="relative"><span class="absolute left-3 top-3.5 text-stone-400"><${Icon} n="search" s=${16}/></span><input class=${field+' !pl-9'} placeholder="Search expenses" value=${q} onInput=${e=>setQ(e.target.value)}/></div>
+      <div class="flex gap-2 overflow-x-auto py-3 -mx-4 px-4">${['All',...Object.keys(CATS)].map(c=>html`<button key=${c} onClick=${()=>setCat(c)} class=${'shrink-0 rounded-full px-3.5 py-1.5 text-sm font-semibold border '+(cat===c?'bg-emerald-600 border-emerald-600 text-white':'border-stone-300 dark:border-neutral-700')}>${c}</button>`)}</div>
+      <ul class=${card+' !p-0 divide-y divide-stone-100 dark:divide-neutral-800 overflow-hidden'}>${shown.length?shown.map(Tx):empty}</ul>
+      <p class="mt-2 text-xs text-center text-stone-500">Tap an expense to edit or delete it.</p>`}
+
+    ${tab==='cash'&&html`
+      <div class=${'rounded-3xl text-white p-6 shadow-lg '+(cashLeft<0?'bg-rose-600':'bg-amber-600')}>
+        <div class="text-sm font-semibold opacity-90">Cash in hand</div>
+        <div class="mt-1 text-4xl font-extrabold tracking-tight">${fmt(cashLeft)}</div>
+        <div class="mt-3 text-xs font-semibold opacity-95">Started ${fmt(cash.start)} · Added ${fmt(cashAdded)} · Spent ${fmt(cashSpent)}</div>
+      </div>
+      <button class=${btn+' mt-3 w-full justify-center py-3 bg-amber-600 hover:bg-amber-700 text-white'} onClick=${()=>setCashForm(true)}><${Icon} n="plus"/>Add cash</button>
+      <div class=${card+' mt-3'}>
+        <label class="block text-sm font-bold mb-2" for="sc">Starting cash (৳)</label>
+        <input id="sc" type="number" inputMode="decimal" class=${field+' text-xl font-bold'} defaultValue=${cash.start} onBlur=${e=>{const v=parseFloat(e.target.value);if(v>=0){setCash({...cash,start:v});setToast('Cash updated')}}}/>
+        <p class="mt-2 text-xs text-stone-500">Expenses paid with "Cash" come out of this wallet, not your bank.</p>
+      </div>
+      <h2 class="font-bold mt-6 mb-2">Cash added</h2>
+      <ul class=${card+' !p-0 divide-y divide-stone-100 dark:divide-neutral-800 overflow-hidden'}>${cash.ins.length?[...cash.ins].sort((a,b)=>b.date.localeCompare(a.date)).map(x=>html`<li key=${x.id} class="px-4 py-3 flex items-center gap-3"><span class="min-w-0 flex-1"><span class="block font-semibold truncate">${x.note||'Cash added'}</span><span class="block text-xs text-stone-500">${x.date}</span></span><span class="font-bold text-emerald-600 dark:text-emerald-400">+${fmt(x.amount)}</span><button class="p-2 text-stone-400" aria-label="Remove" onClick=${()=>setAsk({msg:'Remove this cash top-up?',yes:()=>setCash(c=>({...c,ins:c.ins.filter(y=>y.id!==x.id)}))})}><${Icon} n="trash" s=${16}/></button></li>`):html`<li class="p-6 text-center text-sm text-stone-500">No top-ups yet.</li>`}</ul>
+      <h2 class="font-bold mt-6 mb-2">Cash spending</h2>
+      <ul class=${card+' !p-0 divide-y divide-stone-100 dark:divide-neutral-800 overflow-hidden'}>${ledger.some(isCash)?ledger.filter(isCash).map(Tx):html`<li class="p-6 text-center text-sm text-stone-500">No cash expenses yet. Pick "Cash" as the payment method when adding one.</li>`}</ul>`}
+
+    ${tab==='insights'&&html`
+      <div class=${card}>
+        <h2 class="text-sm font-bold mb-3">Quick details</h2>
+        <dl class="space-y-3 text-sm">${[['Spent today',fmt(stats.todaySum)],['Daily average',fmt(stats.avg)],['Biggest expense',stats.big?stats.big.desc+' ('+fmt(stats.big.amount)+')':'—'],['Balance may last',stats.left!=null?'about '+stats.left+' more days':'—'],['Transactions',String(items.length)]].map(([k,v])=>html`<div key=${k} class="flex justify-between gap-3"><dt class="text-stone-500">${k}</dt><dd class="font-semibold text-right">${v}</dd></div>`)}</dl>
+      </div>
+      <div class=${card+' mt-3'}>
+        <h2 class="text-sm font-bold mb-3">Where the money went</h2>
+        ${stats.byCat.length===0?html`<p class="text-sm text-stone-500">Add an expense to see the breakdown.</p>`:html`<ul class="space-y-3">${stats.byCat.map(x=>html`<li key=${x.c}><div class="flex justify-between text-sm mb-1"><span>${x.c}</span><span class="font-semibold">${fmt(x.v)} <span class="text-stone-500 font-normal">(${(x.v/allSpent*100).toFixed(0)}%)</span></span></div><div class="h-2 rounded-full bg-stone-200 dark:bg-neutral-800"><div class=${'h-full rounded-full '+BAR[CATS[x.c]]} style=${{width:(x.v/allSpent*100)+'%'}}></div></div></li>`)}</ul>`}
+      </div>`}
+
+    ${tab==='settings'&&html`
+      <div class=${card}>
+        <label class="block text-sm font-bold mb-2" for="ib">Initial bank balance (৳)</label>
+        <input id="ib" type="number" inputMode="decimal" class=${field+' text-xl font-bold'} defaultValue=${initial} onBlur=${e=>{const v=parseFloat(e.target.value);if(v>=0){setInitial(v);setToast('Balance updated')}}}/>
+        <p class="mt-2 text-xs text-stone-500">Remaining balance is always this amount minus all expenses.</p>
+      </div>
+      <div class="mt-3 flex flex-col gap-2">
+        <button class=${ghost+' justify-center py-3'} onClick=${exportCsv}><${Icon} n="down"/>Export CSV</button>
+        <button class=${ghost+' justify-center py-3 text-rose-600 dark:text-rose-400'} onClick=${reset}><${Icon} n="reset"/>Reset all data</button>
+      </div>
+      <div class=${card+' mt-3 text-sm text-stone-600 dark:text-stone-300'}>
+        <h2 class="font-bold mb-1">Install on your phone</h2>
+        <p><b>Android (Chrome):</b> menu ⋮ → Add to Home screen.</p>
+        <p class="mt-1"><b>iPhone (Safari):</b> Share → Add to Home Screen.</p>
+      </div>`}
+
+    <button class="fixed right-4 z-30 h-14 w-14 rounded-full bg-emerald-600 active:bg-emerald-700 text-white grid place-items-center shadow-xl" style=${{bottom:'calc(5rem + env(safe-area-inset-bottom,0px))'}} onClick=${()=>setForm('new')} aria-label="Add expense"><${Icon} n="plus" s=${26}/></button>
+
+    <nav class="fixed bottom-0 inset-x-0 z-30 border-t border-stone-200 dark:border-neutral-800 bg-white/95 dark:bg-neutral-900/95 backdrop-blur" style=${{paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
+      <div class="max-w-lg mx-auto grid grid-cols-5">${tabs.map(([k,l,ic])=>html`<button key=${k} onClick=${()=>setTab(k)} class=${'flex flex-col items-center gap-0.5 py-2.5 text-xs font-semibold '+(tab===k?'text-emerald-600 dark:text-emerald-400':'text-stone-500')}><${Icon} n=${ic} s=${22}/>${l}</button>`)}</div>
+    </nav>
+
+    ${form&&html`<${Form} init=${form==='new'?null:form} onSave=${save} onClose=${()=>setForm(null)} onDelete=${form==='new'?null:()=>{const f=form;setForm(null);del(f)}}/>`}
+    ${cashForm&&html`<${CashForm} onSave=${x=>{setCash(c=>({...c,ins:[...c.ins,{...x,id:uid()}]}));setCashForm(false);setToast('Cash added')}} onClose=${()=>setCashForm(false)}/>`}
+    ${ask&&html`<div class="fixed inset-0 z-[60] grid place-items-center bg-black/50 p-6" onClick=${()=>setAsk(null)}><div class="w-full max-w-sm rounded-2xl bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 p-5 shadow-2xl" onClick=${e=>e.stopPropagation()} role="alertdialog"><p class="font-semibold">${ask.msg}</p><p class="mt-1 text-sm text-stone-500">This can't be undone.</p><div class="mt-5 flex justify-end gap-2"><button class=${ghost} onClick=${()=>setAsk(null)}>Cancel</button><button class=${btn+' bg-rose-600 hover:bg-rose-700 text-white'} onClick=${()=>{const y=ask.yes;setAsk(null);y()}}>Delete</button></div></div></div>`}
+    ${toast&&html`<div class="fixed left-1/2 -translate-x-1/2 z-50 rounded-full bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 px-4 py-2 text-sm font-semibold shadow-lg" style=${{bottom:'calc(9rem + env(safe-area-inset-bottom,0px))'}} role="status">${toast}</div>`}
+  </div>`;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(html`<${App}/>`);
+</script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}))</script>
+</body>
+</html>
